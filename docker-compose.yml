@@ -67,6 +67,25 @@ services:
       - kafka
       - postgres
 
+  processor:
+    build:
+      context: .
+      dockerfile: docker/processor/Dockerfile
+    container_name: processor
+    depends_on:
+      - kafka
+      - minio
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=admin
+      - MINIO_SECRET_KEY=admin123
+      - AWS_REGION=us-east-1
+    volumes:
+      - .:/app
+    restart: always
+  
+
 volumes:
   minio_data_scd:
   pgdata:  

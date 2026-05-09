@@ -2,4 +2,5 @@ confluent-kafka
 deltalake
 pyarrow
 pandas
+polars
 boto3

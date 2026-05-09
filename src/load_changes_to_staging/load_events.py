@@ -1,24 +1,17 @@
 from confluent_kafka import Consumer
-from datetime import datetime
 import json
 from deltalake import write_deltalake, DeltaTable
 from deltalake.exceptions import TableNotFoundError
 import pandas as pd
 import time
 import logging
-import pyarrow as pa
+import sys
+from pathlib import Path
 
-BOOTSTRAP_SERVER = 'kafka:29092'
-CDC_TOPIC = 'pg-changes.public.customers'
-CONSUMER_GROUP = "consumer-group-clean-v2"
-STORAGE_CONFIG = {
-    "AWS_ACCESS_KEY_ID": "admin",
-    "AWS_SECRET_ACCESS_KEY": "admin123",
-    "AWS_ENDPOINT_URL": "http://172.18.0.2:9000",
-    'AWS_REGION': 'us-east-1',
-    'allow_http': 'true'
-}
-S3_PATH = f"s3://scd2/updated_records"
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from config import S3_PATH_CDC, STORAGE_CONFIG, BOOTSTRAP_SERVER, CDC_TOPIC, CONSUMER_GROUP
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -74,7 +67,7 @@ def load_cdc_events_to_delta(batch_size = 5):
         changes_counter += 1
 
         if changes_counter == batch_size:
-            write_dataframe_to_delta_table(STORAGE_CONFIG, S3_PATH, current_batch)
+            write_dataframe_to_delta_table(STORAGE_CONFIG, S3_PATH_CDC, current_batch)
             current_batch = pd.DataFrame()
             changes_counter = 0
 

@@ -1,14 +1,24 @@
 from confluent_kafka import Consumer
 from datetime import datetime
 import json
-from deltalake import write_deltalake
+from deltalake import write_deltalake, DeltaTable
+from deltalake.exceptions import TableNotFoundError
 import pandas as pd
 import time
 import logging
+import pyarrow as pa
 
 BOOTSTRAP_SERVER = 'kafka:29092'
 CDC_TOPIC = 'pg-changes.public.customers'
 CONSUMER_GROUP = "consumer-group-clean-v2"
+STORAGE_CONFIG = {
+    "AWS_ACCESS_KEY_ID": "admin",
+    "AWS_SECRET_ACCESS_KEY": "admin123",
+    "AWS_ENDPOINT_URL": "http://172.18.0.2:9000",
+    'AWS_REGION': 'us-east-1',
+    'allow_http': 'true'
+}
+S3_PATH = f"s3://scd2/updated_records"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -17,9 +27,12 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-def load_cdc_events_to_delta():
+def load_cdc_events_to_delta(batch_size = 5):
     logger.info(f"boostrap server: {BOOTSTRAP_SERVER}")
     logger.info(f"changes topic: {CDC_TOPIC}")
+
+    changes_counter = 0
+    logger.info(f"set changes counter to 0")
 
     consumer_configuration = {
         'bootstrap.servers': BOOTSTRAP_SERVER,
@@ -33,6 +46,8 @@ def load_cdc_events_to_delta():
 
     consumer.subscribe([CDC_TOPIC])
     logger.info("Subscribed to demo_topic")
+
+    current_batch = pd.DataFrame()
 
     while True:
         msg = consumer.poll(1.0)
@@ -52,6 +67,17 @@ def load_cdc_events_to_delta():
         customer_record = parse_event_to_customer_record(message)
         logger.info(f"message: {customer_record}")
 
+        customer_record["updated_at"] = pd.to_datetime(customer_record["created_at"], unit = "us").date()
+
+        logger.info("concatenated customer_record with current_batch")
+        current_batch = concat_record_with_currrent_batch(current_batch, customer_record)
+        changes_counter += 1
+
+        if changes_counter == batch_size:
+            write_dataframe_to_delta_table(STORAGE_CONFIG, S3_PATH, current_batch)
+            current_batch = pd.DataFrame()
+            changes_counter = 0
+
     consumer.close()
     logger.info("Connection closed unexpectedly")
 
@@ -70,6 +96,28 @@ def parse_event_to_customer_record(message):
 
     return customer_record
 
+def concat_record_with_currrent_batch(current_batch, record):
+    record = pd.DataFrame([record])
+    return pd.concat([current_batch, record], ignore_index = True)
+
+def write_dataframe_to_delta_table(storage_config, s3_path, df):
+    try:
+        dt = DeltaTable(s3_path)
+        logger.info(f"table {s3_path} exist, setting write mode to append")
+        mode = 'append'
+    
+    except:
+        logger.info(f"table {s3_path} doesn't exist, setting write mode to overwrite")
+        mode = 'overwrite'
+
+    logger.info(f"Output mode is {mode}")
+    write_deltalake(
+        s3_path,
+        data = df,
+        storage_options = storage_config,
+        mode = mode,
+        partition_by = ["updated_at"]
+    )
 
 if __name__ == '__main__':
     load_cdc_events_to_delta()

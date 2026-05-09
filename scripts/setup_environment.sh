@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 
 echo launching containers $'\n'
-sudo docker-compose up -d --build
+sudo docker compose up -d --build
 
 response=$(make connector-status)
 http_code=$(echo "$response" | tail -n1)

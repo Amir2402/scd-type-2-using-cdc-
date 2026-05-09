@@ -4,6 +4,9 @@ up:
 down:
 	sudo docker-compose down
 
+restart:
+	sudo docker-compose restart
+
 list-topics:
 	sudo docker exec -it kafka kafka-topics --list --bootstrap-server localhost:9092
 
@@ -23,4 +26,7 @@ push:
 	git push -u origin main
 
 init-table:
-	sudo docker exec -i postgres psql -U postgres -d db_local < ./scripts/init_table.sql
+	sudo docker exec -i a1b6735d4f8d_postgres psql -U postgres -d db_local < ./scripts/init_table.sql
+
+processor-logs:
+	sudo docker logs process

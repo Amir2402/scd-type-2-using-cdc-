@@ -95,7 +95,7 @@ def concat_record_with_currrent_batch(current_batch, record):
 
 def write_dataframe_to_delta_table(storage_config, s3_path, df):
     try:
-        dt = DeltaTable(s3_path)
+        dt = DeltaTable(s3_path, storage_options = storage_config)
         logger.info(f"table {s3_path} exist, setting write mode to append")
         mode = 'append'
     

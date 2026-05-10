@@ -30,3 +30,6 @@ init-table:
 
 processor-logs:
 	sudo docker logs process
+
+db: 
+	sudo docker exec -it a1b6735d4f8d_postgres psql -U postgres -d db_local

@@ -1,5 +1,5 @@
 import logging
-from deltalake import DeltaTable
+from deltalake import DeltaTable, write_deltalake
 import sys
 import boto3
 from datetime import datetime
@@ -59,22 +59,38 @@ def apply_scd2_on_last_batch(cdc_table, s3_path_scd, storage_config):
     cdc_table = cdc_table.filter(
         pl.col("updated_at") == datetime(2026, 5, 2) 
     )
+    cdc_table = cdc_table.with_columns(
+        pl.date(1970, 1, 1).alias("valid_from_date"), 
+        pl.date(9999, 12, 31).alias("valid_to_date")
+    )
+    cdc_table = cdc_table.collect().to_arrow()    
 
-    merge_options = {
-        "perdicate": "s.customer_id = t.customer_id", 
-        "source_alias": "s",
-        "target_alias": "t",
-        "when_matched_update": {
-            "predicate": ["valid_to_date = 9999-12-31"],
-            "updates": [{"t.valid_to_date": "s.updated_at"}],
-        }
-    }
+    target_dt = DeltaTable(s3_path_scd, storage_options=storage_config)
 
-    cdc_table.write_deltalake(
+    # Close records based the update_date of the source, and update values
+    (
+        target_dt.merge(
+            source = cdc_table,
+            predicate = "s.customer_id = t.customer_id",
+            source_alias = "s",
+            target_alias = "t"
+        )
+        .when_matched_update(
+            updates = {
+                "valid_to_date": "s.updated_at",
+                "first_name": "s.first_name"
+                },
+            predicate = "t.valid_to_date = DATE '9999-12-31 00:00:00'"
+        )
+        .execute()
+    )
+
+    # Append rows to the delta table whether they match or not, It doesn't matter
+    write_deltalake(
         s3_path_scd,
+        data = cdc_table,
         storage_options = storage_config,
-        mode = "merge",
-
+        mode = "append",
     )
 
 def load_config():
@@ -90,7 +106,11 @@ if __name__ == "__main__":
 
     if not check_scd2_table_empty(STORAGE_CONFIG):
         initialize_scd2_table(cdc_table, S3_PATH_SCD2, STORAGE_CONFIG)
+        sys.exit(0)
+
+    apply_scd2_on_last_batch(cdc_table, S3_PATH_SCD2, STORAGE_CONFIG)
 
     scd2_table = read_delta_table(S3_PATH_SCD2, STORAGE_CONFIG)
-    
+    scd2_table.show(limit = 20)
+
 
